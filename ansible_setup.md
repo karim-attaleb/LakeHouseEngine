@@ -23,9 +23,12 @@ This document provides a detailed step-by-step procedure to configure the **cont
    For other distributions, refer to the [Ansible installation guide](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html).
 
 2. **Create the Ansible User**:
-   Add the `ansible` user on the control node:
+   Use the community-recommended approach with `adduser` for creating the `ansible` user:
    ```bash
-   sudo useradd -m -s /bin/bash ansible
+   sudo adduser ansible --shell /bin/bash --gecos "Ansible User" --disabled-password
+   ```
+   Set a secure password for the `ansible` user:
+   ```bash
    sudo passwd ansible
    ```
 
@@ -39,7 +42,7 @@ This document provides a detailed step-by-step procedure to configure the **cont
 4. **Generate SSH Keys for Ansible**:
    Switch to the `ansible` user and generate SSH keys:
    ```bash
-   su - ansible
+   sudo -i -u ansible
    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
    ```
 
@@ -54,9 +57,12 @@ This document provides a detailed step-by-step procedure to configure the **cont
 ## Step 2: Prepare the Managed Nodes
 
 1. **Create the Ansible User**:
-   On each managed node, create the `ansible` user:
+   On each managed node, use `adduser` to create the `ansible` user:
    ```bash
-   sudo useradd -m -s /bin/bash ansible
+   sudo adduser ansible --shell /bin/bash --gecos "Ansible User" --disabled-password
+   ```
+   Set a secure password for the `ansible` user:
+   ```bash
    sudo passwd ansible
    ```
 
@@ -76,7 +82,7 @@ This document provides a detailed step-by-step procedure to configure the **cont
 4. **Configure SSH Access**:
    Copy the SSH public key from the control node to each managed node:
    ```bash
-   ssh-copy-id ansible@<managed_node_ip>
+   ssh-copy-id -i /home/ansible/.ssh/id_rsa ansible@<managed_node_ip>
    ```
    Test the connection:
    ```bash
@@ -91,8 +97,8 @@ This document provides a detailed step-by-step procedure to configure the **cont
    Create or edit the Ansible inventory file, typically located at `/etc/ansible/hosts`.
    ```plaintext
    [managed_nodes]
-   node1 ansible_host=<managed_node_ip1> ansible_user=ansible
-   node2 ansible_host=<managed_node_ip2> ansible_user=ansible
+   node1 ansible_host=192.168.1.101 ansible_user=ansible
+   node2 ansible_host=192.168.1.102 ansible_user=ansible
    ```
 
 2. **Test Connectivity**:
@@ -143,6 +149,93 @@ This document provides a detailed step-by-step procedure to configure the **cont
 
 ---
 
-## Summary
+## Illustrative Example
 
-Following these steps, you can securely set up the control and managed nodes for Ansible playbooks. This configuration ensures smooth and secure automation workflows while adhering to best practices.
+### Scenario
+You are setting up:
+1. A control node with IP `192.168.1.100`.
+2. Two managed nodes with IPs `192.168.1.101` and `192.168.1.102`.
+3. An Ansible playbook to install NGINX on both managed nodes.
+
+### Steps
+
+#### 1. Prepare the Control Node
+Run the following commands on the control node:
+```bash
+sudo apt update && sudo apt install -y ansible
+sudo adduser ansible --shell /bin/bash --gecos "Ansible User" --disabled-password
+sudo passwd ansible
+sudo echo "ansible ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/ansible
+sudo chmod 440 /etc/sudoers.d/ansible
+sudo -i -u ansible
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+```
+
+#### 2. Prepare the Managed Nodes
+Run the following commands on each managed node (`192.168.1.101` and `192.168.1.102`):
+```bash
+sudo adduser ansible --shell /bin/bash --gecos "Ansible User" --disabled-password
+sudo passwd ansible
+sudo apt update && sudo apt install -y python3 python3-pip
+sudo echo "ansible ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/ansible
+sudo chmod 440 /etc/sudoers.d/ansible
+```
+
+Copy the SSH key from the control node to each managed node:
+```bash
+ssh-copy-id -i /home/ansible/.ssh/id_rsa ansible@192.168.1.101
+ssh-copy-id -i /home/ansible/.ssh/id_rsa ansible@192.168.1.102
+```
+
+#### 3. Configure Inventory
+Edit `/etc/ansible/hosts` on the control node:
+```plaintext
+[managed_nodes]
+node1 ansible_host=192.168.1.101 ansible_user=ansible
+node2 ansible_host=192.168.1.102 ansible_user=ansible
+```
+
+Test connectivity:
+```bash
+ansible -m ping all
+```
+
+#### 4. Create an Ansible Playbook
+Create a playbook file `install_nginx.yml`:
+```yaml
+---
+- name: Install NGINX on managed nodes
+  hosts: managed_nodes
+  become: true
+  tasks:
+    - name: Ensure NGINX is installed
+      apt:
+        name: nginx
+        state: present
+```
+
+#### 5. Run the Playbook
+Execute the playbook from the control node:
+```bash
+ansible-playbook install_nginx.yml
+```
+
+Expected output:
+```plaintext
+PLAY [Install NGINX on managed nodes] *****************************************
+TASK [Gathering Facts] ********************************************************
+ok: [node1]
+ok: [node2]
+
+TASK [Ensure NGINX is installed] **********************************************
+changed: [node1]
+changed: [node2]
+
+PLAY RECAP ********************************************************************
+node1                     : ok=2    changed=1    unreachable=0    failed=0    
+node2                     : ok=2    changed=1    unreachable=0    failed=0    
+```
+
+---
+
+This example demonstrates setting up a control node and managed nodes with Ansible, configuring SSH, and running a playbook to install NGINX while adhering to best practices.
